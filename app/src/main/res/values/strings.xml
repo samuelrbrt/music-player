@@ -6,4 +6,5 @@
 
         <string name="listen_now">Listen now</string>
         <string name="music_library">Music library</string>
+        <string name="pause">Pause</string>
 </resources>
