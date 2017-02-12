@@ -30,9 +30,16 @@
                 </android.support.design.widget.AppBarLayout>
 
                 <FrameLayout
+                    android:id="@+id/fl_fragment_holder"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    app:layout_behavior="@string/appbar_scrolling_view_behavior"/>
+                    app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+                        <android.support.v7.widget.AppCompatImageButton
+                            android:id="@+id/ib_play_pause"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"/>
+                </FrameLayout>
 
         </android.support.design.widget.CoordinatorLayout>
 
