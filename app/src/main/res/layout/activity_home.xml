@@ -29,17 +29,35 @@
 
                 </android.support.design.widget.AppBarLayout>
 
-                <FrameLayout
-                    android:id="@+id/fl_fragment_holder"
+                <RelativeLayout
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
+                    android:padding="@dimen/activity_horizontal_margin"
                     app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
                         <android.support.v7.widget.AppCompatImageButton
-                            android:id="@+id/ib_play_pause"
-                            android:layout_width="match_parent"
+                            android:id="@+id/ib_skip_to_prev"
+                            android:layout_width="wrap_content"
+                            android:layout_alignParentBottom="true"
+                            android:src="@drawable/ic_skip_previous_white_24dp"
                             android:layout_height="wrap_content"/>
-                </FrameLayout>
+
+                        <android.support.v7.widget.AppCompatImageButton
+                            android:id="@+id/ib_play_pause"
+                            android:layout_width="wrap_content"
+                            android:layout_alignParentBottom="true"
+                            android:layout_centerHorizontal="true"
+                            android:src="@drawable/ic_pause_white_36dp"
+                            android:layout_height="wrap_content"/>
+
+                        <android.support.v7.widget.AppCompatImageButton
+                            android:id="@+id/ib_skip_to_next"
+                            android:layout_width="wrap_content"
+                            android:layout_alignParentBottom="true"
+                            android:src="@drawable/ic_skip_next_white_24dp"
+                            android:layout_alignParentEnd="true"
+                            android:layout_height="wrap_content"/>
+                </RelativeLayout>
 
         </android.support.design.widget.CoordinatorLayout>
 

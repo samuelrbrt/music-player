@@ -3,4 +3,9 @@
         <color name="colorPrimary">#3F51B5</color>
         <color name="colorPrimaryDark">#303F9F</color>
         <color name="colorAccent">#FF4081</color>
+
+        <!-- shades of grey -->
+        <color name="grey_900">#212121</color>
+        <color name="grey_800">#424242</color>
+        <color name="grey_700">#616161</color>
 </resources>

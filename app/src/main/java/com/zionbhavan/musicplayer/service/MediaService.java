@@ -21,7 +21,6 @@ import android.support.v4.media.MediaBrowserCompat;
 import android.support.v4.media.MediaBrowserCompat.MediaItem;
 import android.support.v4.media.MediaBrowserServiceCompat;
 import android.support.v4.media.MediaDescriptionCompat;
-import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaButtonReceiver;
 import android.support.v4.media.session.MediaControllerCompat;
 import android.support.v4.media.session.MediaSessionCompat;
@@ -29,8 +28,10 @@ import android.support.v4.media.session.PlaybackStateCompat;
 import android.support.v7.app.NotificationCompat;
 import android.util.Log;
 import android.webkit.MimeTypeMap;
+import android.widget.RemoteViews;
 
 import com.zionbhavan.musicplayer.R;
+import com.zionbhavan.musicplayer.activity.HomeActivity;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -44,18 +45,15 @@ import java.util.List;
 
 public class MediaService extends MediaBrowserServiceCompat implements AudioManager.OnAudioFocusChangeListener {
 	private static final String TAG = "MediaService";
-	private static final String MEDIA_ROOT_ID = "media_root_id";
 	private static final int NOTIFICATION_ID = 158;
-
 	private MediaSessionCompat mMediaSession;
 	private MediaPlayer mPlayer;
 	private BecomingNoisyReceiver myNoisyAudioStreamReceiver = new BecomingNoisyReceiver();
 	private IntentFilter intentFilter = new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
 	private MediaSessionCallback mSessionCallback;
 	private MediaPlayerListeners mMediaListener;
-
-	private ArrayList<MediaItem> mAlbums = new ArrayList<>();
 	private ArrayList<MediaItem> mLibrary = new ArrayList<>();
+	private int mCurrentPosition = 0;
 
 	public MediaService() {
 	}
@@ -66,16 +64,23 @@ public class MediaService extends MediaBrowserServiceCompat implements AudioMana
 
 		// Create a MediaSessionCompat
 		mMediaSession = new MediaSessionCompat(getApplicationContext(), TAG);
+		// Set the session's token so that client activities can communicate with it.
+		setSessionToken(mMediaSession.getSessionToken());
 
 		// Enable callbacks from MediaButtons and TransportControls
 		mMediaSession.setFlags(
-		    MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS |
-			MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
+		    MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS | MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
+		);
 
 		// Set an initial PlaybackState with ACTION_PLAY, so media buttons can start the player
-		PlaybackStateCompat.Builder stateBuilder = new PlaybackStateCompat.Builder()
-		    .setActions(PlaybackStateCompat.ACTION_PLAY | PlaybackStateCompat.ACTION_PLAY_PAUSE);
-		mMediaSession.setPlaybackState(stateBuilder.build());
+		PlaybackStateCompat.Builder mStateBuilder = new PlaybackStateCompat.Builder()
+		    .setActions(
+			PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
+			    PlaybackStateCompat.ACTION_PLAY_PAUSE |
+			    PlaybackStateCompat.ACTION_SKIP_TO_NEXT
+		    );
+
+		mMediaSession.setPlaybackState(mStateBuilder.build());
 
 		// MediaSessionCallback has methods that handle callbacks from UI
 		mSessionCallback = new MediaSessionCallback();
@@ -85,36 +90,32 @@ public class MediaService extends MediaBrowserServiceCompat implements AudioMana
 		// To enable restarting an inactive session in the background,
 		// You must create a pending intent and setMediaButtonReceiver.
 		Intent mediaButtonIntent = new Intent(Intent.ACTION_MEDIA_BUTTON);
-		mediaButtonIntent.setClass(getApplicationContext(), MediaService.class);
-		PendingIntent mbrIntent = PendingIntent.getService(getApplicationContext(), 0, mediaButtonIntent, 0);
+		mediaButtonIntent.setClass(getApplicationContext(), MediaButtonReceiver.class);
+		PendingIntent mbrIntent = PendingIntent.getBroadcast(getApplicationContext(), 0, mediaButtonIntent, 0);
 		mMediaSession.setMediaButtonReceiver(mbrIntent);
-
-		// Set the session's token so that client activities can communicate with it.
-		setSessionToken(mMediaSession.getSessionToken());
 
 		// Media player
 		mPlayer = new MediaPlayer();
 		mMediaListener = new MediaPlayerListeners();
 
-		// Build Library
-		Thread thread = new Thread() {
-			@Override
-			public void run() {
-				super.run();
-				buildLibrary();
-			}
-		};
-		thread.start();
+		buildLibrary();
 	}
+
+	@Override
+	public int onStartCommand(Intent intent, int flags, int startId) {
+		MediaButtonReceiver.handleIntent(mMediaSession, intent);
+		return super.onStartCommand(intent, flags, startId);
+	}
+
 
 	@Nullable
 	@Override
 	public BrowserRoot onGetRoot(@NonNull String clientPackageName, int clientUid, @Nullable Bundle rootHints) {
 		if (allowBrowsing(clientPackageName)) {
-			return new BrowserRoot(MEDIA_ROOT_ID, null);
-		} else {
-			return null;
+			return new BrowserRoot(getString(R.string.app_name), null);
 		}
+
+		return null;
 	}
 
 	private boolean allowBrowsing(String clientPackageName) {
@@ -126,6 +127,13 @@ public class MediaService extends MediaBrowserServiceCompat implements AudioMana
 		result.sendResult(mLibrary);
 	}
 
+	@Override
+	public void onDestroy() {
+		Log.w(TAG, "onDestroy: ");
+		super.onDestroy();
+		mMediaSession.release();
+	}
+
 	private void buildLibrary() {
 		ContentResolver contentResolver = getContentResolver();
 		Uri uri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
@@ -133,7 +141,7 @@ public class MediaService extends MediaBrowserServiceCompat implements AudioMana
 		    MediaStore.Audio.Media._ID,
 		    MediaStore.Audio.Media.TITLE,
 		    MediaStore.Audio.Media.ALBUM,
-		    MediaStore.Audio.Media.ARTIST
+		    MediaStore.Audio.Media.ARTIST,
 		};
 		String SELECTION = MediaStore.Files.FileColumns.MIME_TYPE + "=?";
 		String[] SELECTION_ARGS = new String[]{
@@ -164,25 +172,28 @@ public class MediaService extends MediaBrowserServiceCompat implements AudioMana
 	}
 
 	private Notification getNotification() {
-		// Given a media session and its context (usually the component containing the session)
-		// Create a NotificationCompat.Builder
-
 		// Get the session's metadata
 		MediaControllerCompat controller = mMediaSession.getController();
-		MediaMetadataCompat mediaMetadata = controller.getMetadata();
-		//MediaDescriptionCompat description = mediaMetadata.getDescription();
+		MediaDescriptionCompat description = mLibrary.get(mCurrentPosition).getDescription();
 
+		Intent intent = new Intent(getApplicationContext(), HomeActivity.class);
+		PendingIntent activity = PendingIntent.getActivity(getApplicationContext(), 1, intent, PendingIntent
+		    .FLAG_UPDATE_CURRENT);
+
+		// Given a media session and its context (usually the component containing the session)
+		// Create a NotificationCompat.Builder
 		NotificationCompat.Builder builder = new NotificationCompat.Builder(getApplicationContext());
 
-		builder
-		    // Add the metadata for the currently playing track
-		    .setContentTitle("Hello")
-		    .setContentText("Cool")
-		    .setSubText("Okay")
-		    .setLargeIcon(null)
+		builder.setContentTitle(description.getTitle())
+		    .setContentText(description.getSubtitle())
+		    .setSubText(description.getDescription())
+		    .setLargeIcon(description.getIconBitmap())
 
 		    // Enable launching the player by clicking the notification
-		    .setContentIntent(controller.getSessionActivity())
+		    .setPriority(NotificationCompat.PRIORITY_MAX)
+		    .setContentIntent(activity)
+		    .setWhen(0)
+		    .setShowWhen(false)
 
 		    // Stop the service when the notification is swiped away
 		    .setDeleteIntent(MediaButtonReceiver.buildMediaButtonPendingIntent(this,
@@ -193,18 +204,39 @@ public class MediaService extends MediaBrowserServiceCompat implements AudioMana
 
 		    // Add an app icon and set its accent color
 		    .setSmallIcon(R.mipmap.ic_launcher)
-		    .setColor(ContextCompat.getColor(this, R.color.colorPrimary))
-
-		    // Add a pause button
-		    .addAction(new NotificationCompat.Action(
-			R.drawable.ic_pause_white_24dp, getString(R.string.pause),
-			MediaButtonReceiver.buildMediaButtonPendingIntent(getApplicationContext(),
-			    PlaybackStateCompat.ACTION_PLAY_PAUSE)))
+		    .setColor(ContextCompat.getColor(this, R.color.grey_800))
+		    .addAction(
+			new NotificationCompat.Action(
+			    R.drawable.ic_skip_previous_white_24dp, getString(R.string.skip_to_previous),
+			    MediaButtonReceiver.buildMediaButtonPendingIntent(
+				getApplicationContext(),
+				PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+			    )
+			)
+		    )
+		    .addAction(
+			new NotificationCompat.Action(
+			    R.drawable.ic_pause_white_36dp, getString(R.string.pause),
+			    MediaButtonReceiver.buildMediaButtonPendingIntent(
+				getApplicationContext(),
+				PlaybackStateCompat.ACTION_PLAY_PAUSE
+			    )
+			)
+		    )
+		    .addAction(
+			new NotificationCompat.Action(
+			    R.drawable.ic_skip_next_white_24dp, getString(R.string.skip_to_next),
+			    MediaButtonReceiver.buildMediaButtonPendingIntent(
+				getApplicationContext(),
+				PlaybackStateCompat.ACTION_SKIP_TO_NEXT
+			    )
+			)
+		    )
 
 		    // Take advantage of MediaStyle features
 		    .setStyle(new NotificationCompat.MediaStyle()
 			.setMediaSession(mMediaSession.getSessionToken())
-			.setShowActionsInCompactView(0)
+			.setShowActionsInCompactView(0, 1, 2)
 			// Add a cancel button
 			.setShowCancelButton(true)
 			.setCancelButtonIntent(MediaButtonReceiver.buildMediaButtonPendingIntent(this,
@@ -215,10 +247,35 @@ public class MediaService extends MediaBrowserServiceCompat implements AudioMana
 
 	@Override
 	public void onAudioFocusChange(int focusChange) {
+		switch (focusChange) {
+			case AudioManager.AUDIOFOCUS_LOSS:
+				mPlayer.pause();
+				break;
 
+			case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
+				mPlayer.pause();
+				break;
+
+			case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
+				break;
+
+			case AudioManager.AUDIOFOCUS_GAIN:
+				mPlayer.start();
+				break;
+
+			case AudioManager.AUDIOFOCUS_GAIN_TRANSIENT:
+				break;
+
+			case AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE:
+				break;
+
+			case AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK:
+				break;
+		}
 	}
 
 	public class MediaSessionCallback extends MediaSessionCompat.Callback {
+
 		@Override
 		public void onPlay() {
 			Log.d(TAG, "onPlay: ");
@@ -231,33 +288,48 @@ public class MediaService extends MediaBrowserServiceCompat implements AudioMana
 			    AudioManager.AUDIOFOCUS_GAIN);
 
 			if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-				try {
-					// Start the service
-					startService(new Intent(getApplicationContext(), MediaService.class));
-					// Set the session active  (and update metadata and state)
-					mMediaSession.setActive(true);
+				if (mMediaSession.getController().getPlaybackState().getState() != PlaybackStateCompat.STATE_PAUSED) {
+					try {
+						// Start the service
+						mPlayer.release();
+						mPlayer = new MediaPlayer();
+						startService(new Intent(getApplicationContext(), MediaService.class));
+						// Set the session active  (and update metadata and state)
+						mMediaSession.setActive(true);
+						// Start player
+						mPlayer.setDataSource(
+						    getApplicationContext(),
+						    ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+							Long.valueOf(mLibrary.get(mCurrentPosition).getMediaId()))
+						);
+						mPlayer.prepare();
+						mPlayer.setOnPreparedListener(mMediaListener);
+						mPlayer.setOnErrorListener(mMediaListener);
+						mPlayer.setOnInfoListener(mMediaListener);
+						mPlayer.setOnSeekCompleteListener(mMediaListener);
+						mPlayer.setOnCompletionListener(mMediaListener);
 
-					// Start player
-					mPlayer.setDataSource(
-					    getApplicationContext(),
-					    ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-						Long.valueOf(mLibrary.get(0).getMediaId()))
-					);
-					mPlayer.prepare();
-					mPlayer.setOnPreparedListener(mMediaListener);
-					mPlayer.setOnErrorListener(mMediaListener);
-					mPlayer.setOnInfoListener(mMediaListener);
-					mPlayer.setOnSeekCompleteListener(mMediaListener);
-					mPlayer.setOnCompletionListener(mMediaListener);
-
-					// Register BECOME_NOISY BroadcastReceiver
-					registerReceiver(myNoisyAudioStreamReceiver, intentFilter);
-
-					// Put the service in the foreground, post notification
-					startForeground(NOTIFICATION_ID, getNotification());
-				} catch (IOException e) {
-					Log.e(TAG, "onPlay: ", e);
+						// Put the service in the foreground, post notification
+						startForeground(NOTIFICATION_ID, getNotification());
+					} catch (IOException e) {
+						Log.e(TAG, "onPlay: ", e);
+					}
+				} else {
+					mPlayer.start();
 				}
+
+				// Register BECOME_NOISY BroadcastReceiver
+				registerReceiver(myNoisyAudioStreamReceiver, intentFilter);
+				mMediaSession.setActive(true);
+
+				mMediaSession.setPlaybackState(
+				    new PlaybackStateCompat.Builder()
+					.setState(PlaybackStateCompat.STATE_PLAYING, mPlayer.getCurrentPosition(), 1f)
+					.setActions(PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
+					    PlaybackStateCompat.ACTION_PLAY_PAUSE |
+					    PlaybackStateCompat.ACTION_SKIP_TO_NEXT)
+					.build()
+				);
 			}
 		}
 
@@ -268,22 +340,33 @@ public class MediaService extends MediaBrowserServiceCompat implements AudioMana
 			// Abandon audio focus
 			am.abandonAudioFocus(MediaService.this);
 			unregisterReceiver(myNoisyAudioStreamReceiver);
-			// Start the service
+
+			// Stop the service
 			stopSelf();
+
 			// Set the session inactive  (and update metadata and state)
 			mMediaSession.setActive(false);
 			// stop the player (custom call)
 			mPlayer.stop();
+
 			// Take the service out of the foreground, remove notification
 			stopForeground(true);
+
+			mMediaSession.setPlaybackState(
+			    new PlaybackStateCompat.Builder()
+				.setState(PlaybackStateCompat.STATE_STOPPED, 0, 1f)
+				.setActions(PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
+				    PlaybackStateCompat.ACTION_PLAY_PAUSE |
+				    PlaybackStateCompat.ACTION_SKIP_TO_NEXT)
+				.build()
+			);
 		}
 
 		@Override
 		public void onPause() {
 			Log.d(TAG, "onPause: ");
-			AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-			// Update metadata and state
-			// pause the player (custom call)
+
+			// pause the player
 			mPlayer.pause();
 
 			// unregister BECOME_NOISY BroadcastReceiver
@@ -291,8 +374,45 @@ public class MediaService extends MediaBrowserServiceCompat implements AudioMana
 
 			// Take the service out of the foreground, retain the notification
 			stopForeground(false);
+
+			mMediaSession.setPlaybackState(
+			    new PlaybackStateCompat.Builder()
+				.setState(PlaybackStateCompat.STATE_PAUSED, mPlayer.getCurrentPosition(), 1f)
+				.setActions(PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
+				    PlaybackStateCompat.ACTION_PLAY_PAUSE |
+				    PlaybackStateCompat.ACTION_SKIP_TO_NEXT)
+				.build()
+			);
 		}
 
+		@Override
+		public void onSkipToNext() {
+			mMediaSession.setPlaybackState(
+			    new PlaybackStateCompat.Builder()
+				.setState(PlaybackStateCompat.STATE_SKIPPING_TO_NEXT, 0, 1f)
+				.setActions(PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
+				    PlaybackStateCompat.ACTION_PLAY_PAUSE |
+				    PlaybackStateCompat.ACTION_SKIP_TO_NEXT)
+				.build()
+			);
+			mCurrentPosition = (++mCurrentPosition) % mLibrary.size();
+			onPlay();
+		}
+
+		@Override
+		public void onSkipToPrevious() {
+			mMediaSession.setPlaybackState(
+			    new PlaybackStateCompat.Builder()
+				.setState(PlaybackStateCompat.STATE_SKIPPING_TO_PREVIOUS, 0, 1f)
+				.setActions(PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
+				    PlaybackStateCompat.ACTION_PLAY_PAUSE |
+				    PlaybackStateCompat.ACTION_SKIP_TO_NEXT)
+				.build()
+			);
+
+			mCurrentPosition = (--mCurrentPosition + mLibrary.size()) % mLibrary.size();
+			onPlay();
+		}
 	}
 
 	private class BecomingNoisyReceiver extends BroadcastReceiver {
@@ -328,6 +448,7 @@ public class MediaService extends MediaBrowserServiceCompat implements AudioMana
 		@Override
 		public void onCompletion(MediaPlayer mp) {
 			Log.d(TAG, "onCompletion: ");
+			mMediaSession.getController().getTransportControls().skipToNext();
 		}
 
 		@Override

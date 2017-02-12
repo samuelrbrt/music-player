@@ -7,4 +7,7 @@
         <string name="listen_now">Listen now</string>
         <string name="music_library">Music library</string>
         <string name="pause">Pause</string>
+        <string name="album_art">Album Art</string>
+        <string name="skip_to_previous">Skip to previous</string>
+        <string name="skip_to_next">Skip to next</string>
 </resources>

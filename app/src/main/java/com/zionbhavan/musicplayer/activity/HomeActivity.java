@@ -44,7 +44,7 @@ public class HomeActivity extends AppCompatActivity
 	    };
 	private MediaBrowserCompat mMediaBrowser;
 	private MediaCallback mConnectionCallbacks;
-	private AppCompatImageButton mPlayPauseIB;
+	private AppCompatImageButton mSkipToPrevIB, mPlayPauseIB, mSkipToNextIB;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -61,13 +61,19 @@ public class HomeActivity extends AppCompatActivity
 
 		NavigationView navigationView = (NavigationView) findViewById(R.id.nav_view);
 		navigationView.setNavigationItemSelectedListener(this);
-		
+
+		mSkipToPrevIB = (AppCompatImageButton) findViewById(R.id.ib_skip_to_prev);
 		mPlayPauseIB = (AppCompatImageButton) findViewById(R.id.ib_play_pause);
+		mSkipToNextIB = (AppCompatImageButton) findViewById(R.id.ib_skip_to_next);
 		
 		// Create MediaBrowserServiceCompat
 		mConnectionCallbacks = new MediaCallback();
 		mMediaBrowser = new MediaBrowserCompat(this, new ComponentName(this, MediaService.class),
 		    mConnectionCallbacks, null);
+
+		/*getSupportFragmentManager().beginTransaction()
+		    .add(R.id.fl_fragment_holder, new AlbumFragment())
+		    .commit();*/
 	}
 
 	@Override
@@ -99,18 +105,41 @@ public class HomeActivity extends AppCompatActivity
 				    .getState();
 				if (pbState == PlaybackState.STATE_PLAYING) {
 					MediaControllerCompat.getMediaController(HomeActivity.this).getTransportControls().pause();
+					mPlayPauseIB.setImageResource(R.drawable.exo_controls_play);
 				} else {
+					mPlayPauseIB.setImageResource(R.drawable.exo_controls_pause);
 					MediaControllerCompat.getMediaController(HomeActivity.this).getTransportControls().play();
 				}
 			}
 		});
+
+		mSkipToPrevIB.setOnClickListener(new View.OnClickListener() {
+			@Override
+			public void onClick(View v) {
+				MediaControllerCompat.getMediaController(HomeActivity.this).getTransportControls().skipToPrevious();
+			}
+		});
+
+		mSkipToNextIB.setOnClickListener(new View.OnClickListener() {
+			@Override
+			public void onClick(View v) {
+				MediaControllerCompat.getMediaController(HomeActivity.this).getTransportControls().skipToNext();
+			}
+		});
+
+		int pbState = MediaControllerCompat.getMediaController(HomeActivity.this).getPlaybackState()
+		    .getState();
+		if (pbState == PlaybackState.STATE_PLAYING) {
+			mPlayPauseIB.setImageResource(R.drawable.exo_controls_pause);
+		} else {
+			mPlayPauseIB.setImageResource(R.drawable.exo_controls_play);
+		}
 		
 		MediaControllerCompat mediaController = MediaControllerCompat.getMediaController(HomeActivity.this);
 		
 		// Display the initial state
 		MediaMetadataCompat metadata = mediaController.getMetadata();
-		PlaybackStateCompat pbState = mediaController.getPlaybackState();
-		
+
 		// Register a Callback to stay in sync
 		mediaController.registerCallback(controllerCallback);
 	}
