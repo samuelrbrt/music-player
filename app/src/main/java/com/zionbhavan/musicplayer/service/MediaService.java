@@ -3,15 +3,12 @@ package com.zionbhavan.musicplayer.service;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
-import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.database.Cursor;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
-import android.net.Uri;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.support.annotation.NonNull;
@@ -21,17 +18,17 @@ import android.support.v4.media.MediaBrowserCompat;
 import android.support.v4.media.MediaBrowserCompat.MediaItem;
 import android.support.v4.media.MediaBrowserServiceCompat;
 import android.support.v4.media.MediaDescriptionCompat;
+import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaButtonReceiver;
 import android.support.v4.media.session.MediaControllerCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
 import android.support.v7.app.NotificationCompat;
 import android.util.Log;
-import android.webkit.MimeTypeMap;
-import android.widget.RemoteViews;
 
 import com.zionbhavan.musicplayer.R;
 import com.zionbhavan.musicplayer.activity.HomeActivity;
+import com.zionbhavan.musicplayer.content.Provider;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -43,16 +40,22 @@ import java.util.List;
  * @signed_off_by Samuel Robert <samuelrbrt16@gmail.com>
  */
 
+@SuppressWarnings("ConstantConditions")
 public class MediaService extends MediaBrowserServiceCompat implements AudioManager.OnAudioFocusChangeListener {
 	private static final String TAG = "MediaService";
 	private static final int NOTIFICATION_ID = 158;
+
 	private MediaSessionCompat mMediaSession;
 	private MediaPlayer mPlayer;
-	private BecomingNoisyReceiver myNoisyAudioStreamReceiver = new BecomingNoisyReceiver();
-	private IntentFilter intentFilter = new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
+
+	private BecomingNoisyReceiver mNoisyAudioStreamReceiver;
+	private IntentFilter mNoisyIntentFilter;
+
 	private MediaSessionCallback mSessionCallback;
 	private MediaPlayerListeners mMediaListener;
-	private ArrayList<MediaItem> mLibrary = new ArrayList<>();
+
+	private ArrayList<MediaItem> mLibrary;
+
 	private int mCurrentPosition = 0;
 
 	public MediaService() {
@@ -98,7 +101,14 @@ public class MediaService extends MediaBrowserServiceCompat implements AudioMana
 		mPlayer = new MediaPlayer();
 		mMediaListener = new MediaPlayerListeners();
 
-		buildLibrary();
+		// Noisy receiver
+		mNoisyAudioStreamReceiver = new BecomingNoisyReceiver();
+		mNoisyIntentFilter = new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
+
+		// Build library
+		Provider mProvider = new Provider(getApplicationContext());
+		mLibrary = new ArrayList<>();
+		mProvider.buildLibrary(mLibrary);
 	}
 
 	@Override
@@ -134,47 +144,10 @@ public class MediaService extends MediaBrowserServiceCompat implements AudioMana
 		mMediaSession.release();
 	}
 
-	private void buildLibrary() {
-		ContentResolver contentResolver = getContentResolver();
-		Uri uri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
-		String[] PROJECTION = new String[]{
-		    MediaStore.Audio.Media._ID,
-		    MediaStore.Audio.Media.TITLE,
-		    MediaStore.Audio.Media.ALBUM,
-		    MediaStore.Audio.Media.ARTIST,
-		};
-		String SELECTION = MediaStore.Files.FileColumns.MIME_TYPE + "=?";
-		String[] SELECTION_ARGS = new String[]{
-		    MimeTypeMap.getSingleton().getMimeTypeFromExtension("mp3")
-		};
-
-		try (Cursor cursor = contentResolver.query(uri, PROJECTION, SELECTION, SELECTION_ARGS, null)) {
-			while (cursor != null && cursor.moveToNext()) {
-				long id = cursor.getLong(0);
-				uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id);
-				mLibrary.add(
-				    new MediaBrowserCompat.MediaItem(
-					new MediaDescriptionCompat.Builder()
-					    .setMediaId(String.valueOf(id))
-					    .setTitle(cursor.getString(1))
-					    .setSubtitle(cursor.getString(2))
-					    .setDescription(cursor.getString(3))
-					    .setMediaUri(
-						uri
-					    )
-					    .build(),
-					MediaBrowserCompat.MediaItem.FLAG_BROWSABLE |
-					    MediaBrowserCompat.MediaItem.FLAG_PLAYABLE
-				    )
-				);
-			}
-		}
-	}
-
 	private Notification getNotification() {
 		// Get the session's metadata
 		MediaControllerCompat controller = mMediaSession.getController();
-		MediaDescriptionCompat description = mLibrary.get(mCurrentPosition).getDescription();
+		MediaDescriptionCompat description = controller.getMetadata().getDescription();
 
 		Intent intent = new Intent(getApplicationContext(), HomeActivity.class);
 		PendingIntent activity = PendingIntent.getActivity(getApplicationContext(), 1, intent, PendingIntent
@@ -291,26 +264,23 @@ public class MediaService extends MediaBrowserServiceCompat implements AudioMana
 				if (mMediaSession.getController().getPlaybackState().getState() != PlaybackStateCompat.STATE_PAUSED) {
 					try {
 						// Start the service
+						startService(new Intent(getApplicationContext(), MediaService.class));
+
 						mPlayer.release();
 						mPlayer = new MediaPlayer();
-						startService(new Intent(getApplicationContext(), MediaService.class));
-						// Set the session active  (and update metadata and state)
-						mMediaSession.setActive(true);
-						// Start player
-						mPlayer.setDataSource(
-						    getApplicationContext(),
-						    ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-							Long.valueOf(mLibrary.get(mCurrentPosition).getMediaId()))
-						);
-						mPlayer.prepare();
 						mPlayer.setOnPreparedListener(mMediaListener);
 						mPlayer.setOnErrorListener(mMediaListener);
 						mPlayer.setOnInfoListener(mMediaListener);
 						mPlayer.setOnSeekCompleteListener(mMediaListener);
 						mPlayer.setOnCompletionListener(mMediaListener);
 
-						// Put the service in the foreground, post notification
-						startForeground(NOTIFICATION_ID, getNotification());
+						// Set player data source
+						mPlayer.setDataSource(
+						    getApplicationContext(),
+						    ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+							Long.valueOf(mLibrary.get(mCurrentPosition).getMediaId()))
+						);
+						mPlayer.prepare();
 					} catch (IOException e) {
 						Log.e(TAG, "onPlay: ", e);
 					}
@@ -319,9 +289,10 @@ public class MediaService extends MediaBrowserServiceCompat implements AudioMana
 				}
 
 				// Register BECOME_NOISY BroadcastReceiver
-				registerReceiver(myNoisyAudioStreamReceiver, intentFilter);
+				registerReceiver(mNoisyAudioStreamReceiver, mNoisyIntentFilter);
 				mMediaSession.setActive(true);
 
+				// Set current playback state and metadata
 				mMediaSession.setPlaybackState(
 				    new PlaybackStateCompat.Builder()
 					.setState(PlaybackStateCompat.STATE_PLAYING, mPlayer.getCurrentPosition(), 1f)
@@ -330,6 +301,11 @@ public class MediaService extends MediaBrowserServiceCompat implements AudioMana
 					    PlaybackStateCompat.ACTION_SKIP_TO_NEXT)
 					.build()
 				);
+
+				setCurrentMetadata();
+
+				// Put the service in the foreground, post notification
+				startForeground(NOTIFICATION_ID, getNotification());
 			}
 		}
 
@@ -339,7 +315,7 @@ public class MediaService extends MediaBrowserServiceCompat implements AudioMana
 			AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
 			// Abandon audio focus
 			am.abandonAudioFocus(MediaService.this);
-			unregisterReceiver(myNoisyAudioStreamReceiver);
+			unregisterReceiver(mNoisyAudioStreamReceiver);
 
 			// Stop the service
 			stopSelf();
@@ -370,7 +346,7 @@ public class MediaService extends MediaBrowserServiceCompat implements AudioMana
 			mPlayer.pause();
 
 			// unregister BECOME_NOISY BroadcastReceiver
-			unregisterReceiver(myNoisyAudioStreamReceiver);
+			unregisterReceiver(mNoisyAudioStreamReceiver);
 
 			// Take the service out of the foreground, retain the notification
 			stopForeground(false);
@@ -413,6 +389,16 @@ public class MediaService extends MediaBrowserServiceCompat implements AudioMana
 			mCurrentPosition = (--mCurrentPosition + mLibrary.size()) % mLibrary.size();
 			onPlay();
 		}
+	}
+
+	private void setCurrentMetadata() {
+		// TODO: Add all metadata of the current song
+		MediaDescriptionCompat currDescription = mLibrary.get(mCurrentPosition).getDescription();
+		MediaMetadataCompat metadata = new MediaMetadataCompat.Builder()
+		    .putString(MediaMetadataCompat.METADATA_KEY_TITLE, currDescription.getTitle().toString())
+		    .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, currDescription.getMediaId())
+		    .build();
+		mMediaSession.setMetadata(metadata);
 	}
 
 	private class BecomingNoisyReceiver extends BroadcastReceiver {

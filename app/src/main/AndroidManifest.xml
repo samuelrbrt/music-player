@@ -1,43 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-          package="com.zionbhavan.musicplayer">
+	package="com.zionbhavan.musicplayer">
 
-        <permission android:name="com.zionbhavan.musicplayer.permission.PLAY"/>
+	<permission android:name="com.zionbhavan.musicplayer.permission.PLAY"/>
 
-        <uses-permission android:name="android.permission.WAKE_LOCK"/>
-        <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+	<uses-permission android:name="android.permission.WAKE_LOCK"/>
+	<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
 
-        <application
-            android:allowBackup="true"
-            android:icon="@mipmap/ic_launcher"
-            android:label="@string/app_name"
-            android:supportsRtl="true"
-            android:theme="@style/AppTheme">
-                <activity
-                    android:name=".activity.HomeActivity"
-                    android:label="@string/app_name"
-                    android:theme="@style/AppTheme.NoActionBar">
-                        <intent-filter>
-                                <action android:name="android.intent.action.MAIN"/>
+	<application
+		android:allowBackup="true"
+		android:icon="@mipmap/ic_launcher"
+		android:label="@string/app_name"
+		android:supportsRtl="true"
+		android:theme="@style/AppTheme">
+		<activity
+			android:name=".activity.HomeActivity"
+			android:label="@string/app_name"
+			android:theme="@style/AppTheme.NoActionBar">
+			<intent-filter>
+				<action android:name="android.intent.action.MAIN"/>
 
-                                <category android:name="android.intent.category.LAUNCHER"/>
-                        </intent-filter>
-                </activity>
+				<category android:name="android.intent.category.LAUNCHER"/>
+			</intent-filter>
+		</activity>
 
-                <service
-                    android:name=".service.MediaService"
-                    android:exported="true">
-                        <intent-filter>
-                                <action android:name="android.media.browse.MediaBrowserService"/>
-                        </intent-filter>
-                </service>
+		<service
+			android:name=".service.MediaService"
+			android:exported="true"
+			android:permission="com.zionbhavan.musicplayer.permission.PLAY">
+			<intent-filter>
+				<action android:name="android.media.browse.MediaBrowserService"/>
+			</intent-filter>
+		</service>
 
-                <receiver android:name="android.support.v4.media.session.MediaButtonReceiver" >
-                        <intent-filter>
-                                <action android:name="android.intent.action.MEDIA_BUTTON" />
-                        </intent-filter>
-                </receiver>
+		<receiver android:name="android.support.v4.media.session.MediaButtonReceiver">
+			<intent-filter>
+				<action android:name="android.intent.action.MEDIA_BUTTON"/>
+			</intent-filter>
+		</receiver>
 
-        </application>
+	</application>
 
 </manifest>
