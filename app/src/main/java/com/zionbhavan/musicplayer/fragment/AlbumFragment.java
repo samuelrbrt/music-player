@@ -9,8 +9,10 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 
+import com.zionbhavan.musicplayer.AlbumModel;
 import com.zionbhavan.musicplayer.R;
 import com.zionbhavan.musicplayer.adapter.AlbumAdapter;
+import com.zionbhavan.musicplayer.content.Provider;
 
 import java.util.ArrayList;
 
@@ -27,20 +29,30 @@ public class AlbumFragment extends MusicFragment {
 
 	private RecyclerView mAlbumRV;
 	private AlbumAdapter mAdapter;
+	private Provider mProvider;
 
 	@Nullable
 	@Override
 	public View onCreateView(LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
 		View rootView = inflater.inflate(R.layout.fragment_album, container, false);
 
-		//mAlbumList = getArguments().getParcelableArrayList(ARG_ALBUM_LIST);
+		mProvider = new Provider(getContext());
 		mAdapter = new AlbumAdapter();
 
 		mAlbumRV = (RecyclerView) rootView.findViewById(R.id.rv_album);
-		mAlbumRV.setLayoutManager(new GridLayoutManager(getContext(), 3));
+		mAlbumRV.setLayoutManager(new GridLayoutManager(getContext(), 2));
 		mAlbumRV.setAdapter(mAdapter);
 
 		return rootView;
+	}
+
+	@Override
+	public void onStart() {
+		super.onStart();
+
+		ArrayList<AlbumModel> albumList = new ArrayList<>();
+		mProvider.getAllAlBum(albumList);
+		mAdapter.setAlbumList(albumList);
 	}
 
 	@Override

@@ -22,6 +22,7 @@ import android.view.MenuItem;
 import android.view.View;
 
 import com.zionbhavan.musicplayer.R;
+import com.zionbhavan.musicplayer.fragment.AlbumFragment;
 import com.zionbhavan.musicplayer.service.MediaService;
 
 /**
@@ -71,9 +72,9 @@ public class HomeActivity extends AppCompatActivity
 		mMediaBrowser = new MediaBrowserCompat(this, new ComponentName(this, MediaService.class),
 		    mConnectionCallbacks, null);
 
-		/*getSupportFragmentManager().beginTransaction()
-		    .add(R.id.fl_fragment_holder, new AlbumFragment())
-		    .commit();*/
+		getSupportFragmentManager().beginTransaction()
+		    .replace(R.id.fl_fragment_holder, new AlbumFragment())
+		    .commit();
 	}
 
 	@Override
